@@ -1,3 +1,8 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
 # Title and description
 st.title("EduRank: MAUT-Based Stock Selection for Educational Innovation")
 st.markdown("""
