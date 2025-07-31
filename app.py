@@ -1,121 +1,105 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-
-# Function to normalize the decision matrix using vector normalization
-def normalize_matrix(matrix):
-    return matrix / np.linalg.norm(matrix, axis=0)
-
-# Function to compute the weighted normalized matrix
-def weighted_normalized_matrix(normalized_matrix, weights):
-    return normalized_matrix * weights
-
-# Function to compute PIS (Positive Ideal Solution) and NIS (Negative Ideal Solution)
-def pis_nis(matrix, impacts):
-    pis = []
-    nis = []
-    for i in range(matrix.shape[1]):
-        if impacts[i] == '+':
-            pis.append(np.max(matrix[:, i]))
-            nis.append(np.min(matrix[:, i]))
-        else:
-            pis.append(np.min(matrix[:, i]))
-            nis.append(np.max(matrix[:, i]))
-    return np.array(pis), np.array(nis)
-
-# Function to compute Euclidean distance from PIS and NIS
-def euclidean_distance(matrix, pis, nis):
-    pis_distance = np.sqrt(np.sum((matrix - pis) ** 2, axis=1))
-    nis_distance = np.sqrt(np.sum((matrix - nis) ** 2, axis=1))
-    return pis_distance, nis_distance
-
-# Function to calculate the relative closeness to the ideal solution
-def relative_closeness(pis_distance, nis_distance):
-    return nis_distance / (pis_distance + nis_distance)
-
-# Streamlit app setup
-st.title("MAUT for Educational Innovation and Stock Ranking")
+# Title and description
+st.title("EduRank: MAUT-Based Stock Selection for Educational Innovation")
 st.markdown("""
-This app evaluates and ranks educational innovations using **Multi-Attribute Utility Theory (MAUT)** method.
-It helps with social sustainability by selecting top innovations based on user-specified criteria.
+This app allows you to evaluate and rank stocks using **Multi-Attribute Utility Theory (MAUT)**.
+Upload your stock dataset, assign weights to each criterion, and the system will compute a ranking based on the utility scores.
 """)
 
-# File upload for decision matrix
-uploaded_file = st.file_uploader("Upload Excel or CSV file with the decision matrix", type=["csv", "xlsx"])
+# File uploader for decision matrix (stock data)
+uploaded_file = st.file_uploader("Upload Excel or CSV file with stock data", type=["csv", "xlsx"])
 
-# Fallback data if no file uploaded
+# Example fallback dataset
 def load_example():
     data = {
-        'Alternative': ['Innovation A', 'Innovation B', 'Innovation C'],
-        'Criterion 1': [7, 8, 6],
-        'Criterion 2': [4, 5, 3],
-        'Criterion 3': [9, 7, 8],
+        'Stock': ['A', 'B', 'C'],
+        'Price': [100, 120, 95],
+        'P/E Ratio': [15, 18, 12],
+        'Dividend Yield': [2.5, 3.0, 2.8],
+        'Growth Rate': [8, 7, 9]
     }
     return pd.DataFrame(data)
 
-# Load data
-df = pd.read_csv(uploaded_file) if uploaded_file and uploaded_file.name.endswith("csv") else \
-     pd.read_excel(uploaded_file) if uploaded_file else load_example()
+# Load the data
+df = None
+if uploaded_file:
+    if uploaded_file.name.endswith("csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file)
+else:
+    st.info("No file uploaded. Using example dataset.")
+    df = load_example()
 
-# Display the dataframe
-st.subheader("Decision Matrix")
-st.write(df)
+# Display the uploaded data or example
+st.subheader("Stock Data")
+st.dataframe(df)
 
-# Extract data
-stocks = df.iloc[:, 0]  # The first column (Alternatives)
-criteria = df.columns[1:]  # All columns except the first column (criteria)
-data = df.iloc[:, 1:].astype(float)  # Convert the criteria columns to numeric values
+# Extract stock names and criteria
+stocks = df.iloc[:, 0]
+criteria = df.columns[1:]
+data = df.iloc[:, 1:].astype(float)
 
 # Input weights for each criterion
 st.subheader("Input Weights (must sum to 1)")
 weights = []
 for i, col in enumerate(criteria):
-    weight = st.number_input(f"Weight for {col}", min_value=0.0, max_value=1.0,
-                             value=round(1/len(criteria), 3), step=0.001)
+    weight = st.number_input(f"Weight for {col}", min_value=0.0, max_value=1.0, value=1/len(criteria), step=0.01)
     weights.append(weight)
 
-if round(sum(weights), 3) != 1.0:
-    st.warning("⚠️ The weights must sum to 1. Please adjust.")
+# Ensure weights sum to 1
+if sum(weights) != 1:
+    st.warning("Weights must sum to 1! Please adjust the weights.")
 
-# Input impact for each criterion
+# Input impact (benefit or cost for each criterion)
 st.subheader("Select Impact for Each Criterion")
 impact = []
+for col in criteria:
+    impact.append(st.selectbox(f"Impact of {col}", options=["+", "-"], index=0 if "Cost" not in col else 1))
+
+# Normalize the data using vector normalization
+st.subheader("Step 1: Normalize the Data")
+normalized = data.copy()
 for i, col in enumerate(criteria):
-    selected = st.radio(
-        f"Is '{col}' a Benefit or Cost Criterion?",
-        options=["Benefit (+)", "Cost (-)"],
-        index=0,
-        horizontal=True,
-        key=f"impact_{i}"
-    )
-    impact.append("+" if "Benefit" in selected else "-")
+    norm = data[col] / np.sqrt((data[col]**2).sum())
+    normalized[col] = norm
+st.dataframe(normalized)
 
-# Step 1: Normalize the matrix using vector normalization
-st.subheader("Step 1: Normalization")
-normalized = normalize_matrix(data)
-
-# Display normalized matrix
-st.write(normalized)
-
-# Step 2: Weighted Normalized Matrix
+# Weighted Normalized Matrix
 st.subheader("Step 2: Weighted Normalized Matrix")
-weighted_matrix = weighted_normalized_matrix(normalized, weights)
+weighted = normalized.copy()
+for i, col in enumerate(criteria):
+    weighted[col] = weighted[col] * weights[i]
+st.dataframe(weighted)
 
-# Display weighted matrix
-st.write(weighted_matrix)
+# MAUT Utility Scores and Ranking
+st.subheader("Step 3: MAUT Scores and Ranking")
+utility = weighted.copy()
+for i, col in enumerate(criteria):
+    if impact[i] == "-":
+        utility[col] = 1 - utility[col]
+utility["MAUT_Score"] = utility.sum(axis=1)
+utility["Stock"] = stocks
+utility = utility[["Stock", "MAUT_Score"]]
+utility = utility.sort_values(by="MAUT_Score", ascending=False).reset_index(drop=True)
 
-# Step 3: Calculate PIS and NIS
-st.subheader("Step 3: Positive Ideal Solution (PIS) and Negative Ideal Solution (NIS)")
-pis, nis = pis_nis(weighted_matrix, impact)
+# Highlight the top-ranked stock
+def highlight_top(row):
+    return ['background-color: lightgreen'] * len(row) if row.name == 0 else [''] * len(row)
 
-# Display PIS and NIS
-st.write("Positive Ideal Solution (PIS):", pis)
-st.write("Negative Ideal Solution (NIS):", nis)
+st.dataframe(utility.style.apply(highlight_top, axis=1))
 
-# Step 4: Euclidean distance from PIS and NIS
-st.subheader("Step 4: Euclidean Distances from PIS and NIS")
-pis_distance, nis_distance = euclidean_distance(weighted_matrix, pis, nis)
+# Bar chart for MAUT Scores
+st.subheader("MAUT Scores Visualization")
+fig, ax = plt.subplots()
+ax.barh(utility['Stock'], utility['MAUT_Score'], color='skyblue')
+ax.set_xlabel('MAUT Score')
+ax.set_title('Stock Ranking Based on MAUT Score')
+st.pyplot(fig)
 
-# Display Euclidean distances
-st.write("Euclidean Distances from PIS:", pis_distance)
-st.writ
+# Download Results as CSV
+st.subheader("Download Result")
+def convert_df(df):
+    return df.to_csv(index=False).encode('utf-8')
+
+csv = convert_df(utility)
+st.download_button("Download Results as CSV", csv, "inno_stock_results.csv", "text/csv")
