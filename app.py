@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # Ensure matplotlib is imported
 
 # Title and description
 st.title("EduRank: MAUT-Based Stock Selection for Educational Innovation")
