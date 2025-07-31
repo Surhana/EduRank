@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -35,10 +34,10 @@ def relative_closeness(pis_distance, nis_distance):
     return nis_distance / (pis_distance + nis_distance)
 
 # Streamlit app setup
-st.title("EduRank: MAUT-Based Stock Selection for Educational Innovation")
+st.title("MAUT Method for Ranking Alternatives")
 st.markdown("""
-This app evaluates and ranks educational innovation alternatives based on Multi-Attribute Utility Theory (MAUT) using big data.
-Users can upload stock selection data for educational innovations and specify weights and impacts for criteria.
+    This app evaluates and ranks alternatives using the **Multi-Attribute Utility Theory (MAUT)** method.
+    Users can upload a decision matrix and specify weights and impacts for criteria.
 """)
 
 # File upload for decision matrix
@@ -48,10 +47,10 @@ uploaded_file = st.file_uploader("Upload an Excel or CSV file with the decision 
 if uploaded_file is None:
     st.warning("No file uploaded, using example dataset")
     data = {
-        'Alternative': ['Innovation A', 'Innovation B', 'Innovation C'],
-        'Criteria 1': [7, 8, 6],
-        'Criteria 2': [4, 5, 3],
-        'Criteria 3': [9, 7, 8],
+        'Alternative': ['A1', 'A2', 'A3'],
+        'Criterion 1': [8, 7, 9],
+        'Criterion 2': [3, 2, 4],
+        'Criterion 3': [6, 8, 7],
     }
     df = pd.DataFrame(data)
 else:
@@ -109,4 +108,4 @@ st.download_button(
     mime="text/csv"
 )
 
-# Example of how to run: streamlit run app.py
+# Example of how to run: streamlit run topsis_app.py
