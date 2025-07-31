@@ -1,111 +1,136 @@
-import streamlit as st
+import streamlit as st   
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
-# Function to normalize the decision matrix using vector normalization
-def normalize_matrix(matrix):
-    return matrix / np.linalg.norm(matrix, axis=0)
-
-# Function to compute the weighted normalized matrix
-def weighted_normalized_matrix(normalized_matrix, weights):
-    return normalized_matrix * weights
-
-# Function to compute PIS (Positive Ideal Solution) and NIS (Negative Ideal Solution)
-def pis_nis(matrix, impacts):
-    pis = []
-    nis = []
-    for i in range(matrix.shape[1]):
-        if impacts[i] == '+':
-            pis.append(np.max(matrix[:, i]))
-            nis.append(np.min(matrix[:, i]))
-        else:
-            pis.append(np.min(matrix[:, i]))
-            nis.append(np.max(matrix[:, i]))
-    return np.array(pis), np.array(nis)
-
-# Function to compute Euclidean distance from PIS and NIS
-def euclidean_distance(matrix, pis, nis):
-    pis_distance = np.sqrt(np.sum((matrix - pis) ** 2, axis=1))
-    nis_distance = np.sqrt(np.sum((matrix - nis) ** 2, axis=1))
-    return pis_distance, nis_distance
-
-# Function to calculate the relative closeness to the ideal solution
-def relative_closeness(pis_distance, nis_distance):
-    return nis_distance / (pis_distance + nis_distance)
-
-# Streamlit app setup
-st.title("MAUT Method for Ranking Alternatives")
+# Title and description
+st.title("InnoStock: Big Data-Powered MAUT Stock Selection System")
 st.markdown("""
-    This app evaluates and ranks alternatives using the **Multi-Attribute Utility Theory (MAUT)** method.
-    Users can upload a decision matrix and specify weights and impacts for criteria.
+This app evaluates and ranks stocks using **Multi-Attribute Utility Theory (MAUT)**.
+Normalization uses different formulas for **benefit** and **cost** criteria based on user input.
 """)
 
-# File upload for decision matrix
-uploaded_file = st.file_uploader("Upload an Excel or CSV file with the decision matrix", type=["csv", "xlsx"])
+# Upload section
+uploaded_file = st.file_uploader("Upload Excel or CSV file with stock data", type=["csv", "xlsx"])
 
-# Default example dataset if no file uploaded
-if uploaded_file is None:
-    st.warning("No file uploaded, using example dataset")
+# Fallback data
+def load_example():
     data = {
-        'Alternative': ['A1', 'A2', 'A3'],
-        'Criterion 1': [8, 7, 9],
-        'Criterion 2': [3, 2, 4],
-        'Criterion 3': [6, 8, 7],
+        'Stock': ['A', 'B', 'C'],
+        'Price': [100, 120, 95],
+        'P/E Ratio': [15, 18, 12],
+        'Dividend Yield': [2.5, 3.0, 2.8],
+        'Growth Rate': [8, 7, 9]
     }
-    df = pd.DataFrame(data)
-else:
-    # Load the user-uploaded file
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    elif uploaded_file.name.endswith(".xlsx"):
-        df = pd.read_excel(uploaded_file)
+    return pd.DataFrame(data)
 
-# Display the dataframe
-st.subheader("Decision Matrix")
-st.write(df)
+# Load data
+df = pd.read_csv(uploaded_file) if uploaded_file and uploaded_file.name.endswith("csv") else \
+     pd.read_excel(uploaded_file) if uploaded_file else load_example()
 
-# Input for weights and impacts
-weights_input = st.text_input("Enter weights for each criterion (comma separated, e.g., 0.3, 0.2, 0.5)", "0.3, 0.2, 0.5")
-weights = np.array([float(x) for x in weights_input.split(',')])
+# Display uploaded/sample data
+st.subheader("Stock Data")
+st.dataframe(df)
 
-impacts_input = st.text_input("Enter impacts for each criterion (comma separated, + for benefit, - for cost)", "+, +, -")
-impacts = impacts_input.split(',')
+# Extract data
+stocks = df.iloc[:, 0]  # The first column (Stock names)
+criteria = df.columns[1:]  # All columns except the first column
+data = df.iloc[:, 1:].astype(float)  # All columns except the first column as numeric data
 
-# Normalize the decision matrix
-matrix = df.drop(columns=['Alternative']).to_numpy()
-normalized_matrix = normalize_matrix(matrix)
+# Input weights
+st.subheader("Input Weights (must sum to 1)")
+weights = []
+for i, col in enumerate(criteria):
+    weight = st.number_input(f"Weight for {col}", min_value=0.0, max_value=1.0,
+                             value=round(1/len(criteria), 3), step=0.001)
+    weights.append(weight)
 
-# Compute the weighted normalized matrix
-weighted_matrix = weighted_normalized_matrix(normalized_matrix, weights)
+if round(sum(weights), 3) != 1.0:
+    st.warning("⚠️ The weights must sum to 1. Please adjust.")
 
-# Compute PIS and NIS
-pis, nis = pis_nis(weighted_matrix, impacts)
+# Input impact — user controlled (radio buttons with unique keys)
+st.subheader("Select Impact for Each Criterion")
+impact = []
+for i, col in enumerate(criteria):
+    selected = st.radio(
+        f"Is '{col}' a Benefit or Cost Criterion?",
+        options=["Benefit (+)", "Cost (-)"],
+        index=0,
+        horizontal=True,
+        key=f"impact_{i}"
+    )
+    impact.append("+" if "Benefit" in selected else "-")
 
-# Compute Euclidean distances
-pis_distance, nis_distance = euclidean_distance(weighted_matrix, pis, nis)
+# Step 1: Normalize using min-max scaling
+st.subheader("Step 1: Min-Max Normalization")
+normalized = data.copy()
 
-# Compute relative closeness
-closeness = relative_closeness(pis_distance, nis_distance)
+for i, col in enumerate(criteria):
+    x_min = data[col].min()
+    x_max = data[col].max()
+    if x_max == x_min:
+        normalized[col] = 1  # Avoid division by 0
+    elif impact[i] == '+':  # Benefit criteria
+        normalized[col] = (data[col] - x_min) / (x_max - x_min)
+    else:  # Cost criteria
+        normalized[col] = (x_max - data[col]) / (x_max - x_min)
 
-# Add closeness to dataframe
-df['Closeness'] = closeness
+# ✅ Display normalized matrix
+st.subheader("Normalized Data")
+st.dataframe(normalized)
 
-# Rank alternatives based on closeness
-df['Rank'] = df['Closeness'].rank(ascending=False)
+# Step 2: Weighted Normalized Matrix
+st.subheader("Step 2: Weighted Normalized Matrix")
+weighted = normalized.copy()
+for i, col in enumerate(criteria):
+    weighted[col] = weighted[col] * weights[i]
 
-# Display results
-st.subheader("Results")
-st.write(df)
+# ✅ Display weighted normalized matrix
+st.subheader("Weighted Normalized Data")
+st.dataframe(weighted)
 
-# Highlight the top-ranked alternative
-st.markdown(f"**Top Ranked Alternative: {df['Alternative'].iloc[0]}**")
+# Step 3: MAUT Score and Ranking
+st.subheader("Step 3: MAUT Score and Ranking")
 
-# Option to download the results as CSV
-st.download_button(
-    label="Download Results as CSV",
-    data=df.to_csv(index=False),
-    file_name="ranking_results.csv",
-    mime="text/csv"
-)
+# Calculate MAUT Scores
+maut_scores = []
+for index, row in normalized.iterrows():
+    score = 0
+    for i, col in enumerate(criteria):
+        score += row[col] * weights[i]
+    maut_scores.append(score)
 
-# Example of how to run: streamlit run topsis_app.py
+# Store and rank the results
+utility = pd.DataFrame({
+    "Stock": stocks,
+    "MAUT_Score": maut_scores
+})
+
+# Sort the scores in descending order (highest first)
+utility = utility.sort_values(by="MAUT_Score", ascending=False).reset_index(drop=True)
+
+# Highlight top-ranked
+def highlight_top(row):
+    return ['background-color: lightgreen'] * len(row) if row.name == 0 else [''] * len(row)
+
+st.dataframe(utility.style.apply(highlight_top, axis=1))
+
+# **Ranking Chart** - Bar Chart for MAUT Scores
+st.subheader("Ranking the Stocks Based on MAUT Scores")
+fig, ax = plt.subplots()
+ax.barh(utility['Stock'], utility['MAUT_Score'], color='skyblue')
+ax.set_xlabel('MAUT Score')
+ax.set_title('Stock Ranking Based on MAUT Score')
+st.pyplot(fig)
+
+# **Download Full Results as CSV**
+st.subheader("Download Full Results")
+def convert_df(df): return df.to_csv(index=False).encode('utf-8')
+
+# Combine all steps in a single DataFrame for download
+full_results = pd.concat([data, normalized, weighted, utility['MAUT_Score']], axis=1)
+full_results.columns = list(data.columns) + [f"Normalized {col}" for col in data.columns] + [f"Weighted {col}" for col in data.columns] + ["MAUT_Score"]
+
+# Convert to CSV for download
+csv = convert_df(full_results)
+st.download_button("Download Full Results as CSV", csv, "full_maut_stock_results.csv", "text/csv")
